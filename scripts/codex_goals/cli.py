@@ -5,10 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import sqlite3
 import sys
 
 from . import __version__, brief as brief_mod, discovery, history, store
 from .paths import is_within, pretty
+from .redact import redact, redact_obj
 
 EXIT_OK, EXIT_NOT_FOUND, EXIT_READ, EXIT_SCHEMA = 0, 1, 2, 3
 
@@ -161,6 +164,13 @@ def filter_goals(goals, rows, cwd, show_all, include_complete, statuses):
     return out
 
 
+def _abs_cwd(path):
+    """Make ``--cwd .`` absolute, but keep paths of another OS (``C:\\x`` on Linux) as given."""
+    if os.path.isabs(path) or re.match(r"^[A-Za-z]:[\\/]", path) or path.startswith(("\\\\", "//")):
+        return path
+    return os.path.abspath(path)
+
+
 def _first_line(text, width):
     line = " ".join((text or "").strip().split())
     return line if len(line) <= width else line[: width - 1] + "…"
@@ -172,7 +182,7 @@ def cmd_list(args):
         return _problem_exit(problems)
     rows = thread_rows(goals)
     statuses = [s.strip() for s in args.status.split(",")] if args.status else None
-    cwd = args.cwd or os.getcwd()
+    cwd = _abs_cwd(args.cwd) if args.cwd else os.getcwd()
     sel = filter_goals(goals, rows, cwd, args.all, args.include_complete, statuses)
     shorts = short_ids([g.thread_id for g in goals]) if goals else {}
     items = []
@@ -186,6 +196,7 @@ def cmd_list(args):
             "objective": g.objective, "tokens_used": g.tokens_used,
             "codex_home": g.home.path,
         })
+    items = redact_obj(items)
     if args.json:
         _dump({"cwd": cwd, "goals": items})
         return EXIT_OK
@@ -270,8 +281,9 @@ def cmd_export(args):
     if not goal:
         return code
     out_dir = args.out or os.path.join(os.getcwd(), "codex-goal-%s-anonymized" % goal.thread_id[:8])
+    real_out = os.path.realpath(out_dir)
     for h in disc.homes:
-        if is_within(os.path.abspath(out_dir), h.path) or is_within(os.path.abspath(out_dir), h.sqlite_home):
+        if any(is_within(real_out, os.path.realpath(x)) for x in (h.path, h.sqlite_home) if x):
             _err("refusing to write inside a Codex folder (%s); choose another --out" % h.path)
             return EXIT_READ
     try:
@@ -316,7 +328,7 @@ def cmd_notify(args):
         for g in sel:
             by_status[g.status] = by_status.get(g.status, 0) + 1
         what = ", ".join("%d %s" % (n, s.replace("_", " ")) for s, n in by_status.items())
-        first = _first_line(sel[0].objective, 50)
+        first = _first_line(redact(sel[0].objective), 50)
         noun = "goal" if len(sel) == 1 else "goals"
         msg = "Codex %s in this project: %s («%s»). Use /codex-goals to resume." % (noun, what, first)
         _out(json.dumps({"systemMessage": msg,
@@ -397,5 +409,12 @@ def main(argv=None):
     except store.ReadError as exc:
         _err(str(exc))
         return EXIT_READ
+    except sqlite3.Error as exc:
+        _err("cannot read Codex's databases: %s" % exc)
+        return EXIT_READ
     except KeyboardInterrupt:
         return 130
+    except Exception as exc:  # never let a traceback look like "goal not found"
+        _err("unexpected error (%s: %s). Please report it at "
+             "https://github.com/XelaJr/codexgoalresumer/issues" % (type(exc).__name__, exc))
+        return EXIT_READ

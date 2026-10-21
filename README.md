@@ -130,11 +130,17 @@ skipped. `--home PATH` forces a specific installation.
 
 ## Read-only guarantee
 
-- Databases are opened with SQLite's `mode=ro` and `query_only`. If Codex holds a lock
-  (or the files sit on a WSL/DrvFS mount), the script copies the database to a temporary
-  folder and reads the copy. You do not need to close Codex.
-- Nothing is ever written to Codex's folders, not even to mark a goal complete. The test
-  suite checks that the databases' modification times do not change.
+- Codex's databases are opened with SQLite's `mode=ro` and `query_only`.
+- Codex keeps its databases in WAL mode. When Codex is not running, their `-wal`/`-shm`
+  companion files are gone, and opening the databases read-only would make SQLite create
+  them. In that case, and when Codex holds a lock or the files sit on a WSL/DrvFS mount,
+  the script reads a temporary copy instead. You do not need to close Codex.
+- When Codex is running, SQLite coordinates readers through Codex's existing `-shm` file,
+  as it does for any reader. Nothing is ever added, removed or written to the databases
+  or the session files, not even to mark a goal complete.
+- The test suite checks that the folder's file list and the databases' modification times
+  do not change, including for WAL databases without companion files.
+- `export` refuses to write inside a Codex folder, even through a symlink.
 - The Claude skill is told never to write to Codex's files and to close goals from Codex.
 
 ## Privacy

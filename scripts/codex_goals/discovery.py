@@ -86,9 +86,22 @@ def _read_top_level_key(toml_path: str, key: str) -> str | None:
         m = re.match(r'^%s\s*=\s*(?:"((?:[^"\\]|\\.)*)"|\'([^\']*)\')' % re.escape(key), s)
         if m:
             if m.group(1) is not None:
-                return m.group(1).encode("utf-8").decode("unicode_escape")
+                return _toml_unescape(m.group(1))
             return m.group(2)
     return None
+
+
+_TOML_ESCAPES = {"b": "\b", "t": "\t", "n": "\n", "f": "\f", "r": "\r", '"': '"', "\\": "\\"}
+
+
+def _toml_unescape(value: str) -> str:
+    """Basic-string escapes only; leaves non-ASCII text (``José``) intact."""
+    def repl(m):
+        esc = m.group(1)
+        if esc[0] in "uU":
+            return chr(int(esc[1:], 16))
+        return _TOML_ESCAPES.get(esc, esc)
+    return re.sub(r"\\(u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)", repl, value)
 
 
 def requirements_paths() -> list:

@@ -1,6 +1,6 @@
 {
   "name": "codexgoalresumer",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Resume unfinished OpenAI Codex /goal goals in Claude Code: list them, get a handoff brief (what was asked, what was done, where it got stuck) and let Claude finish the work. Read-only: never writes to Codex's files.",
   "author": {
     "name": "XelaJr",

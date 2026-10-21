@@ -49,7 +49,29 @@ def _needs_copy(path: str) -> bool:
     return bool(re.match(r"^/mnt/[a-z]/", p) or p.startswith("//wsl") or p.startswith("\\\\wsl"))
 
 
+def _is_wal(path: str) -> bool:
+    """True when the database header says WAL mode (bytes 18 and 19 == 2)."""
+    try:
+        with open(path, "rb") as fh:
+            header = fh.read(20)
+    except OSError:
+        return False
+    return len(header) >= 20 and header[18] == 2 and header[19] == 2
+
+
+def _would_create_files(path: str) -> bool:
+    """Reading a WAL database whose -wal/-shm are gone makes SQLite create them
+    next to it, even with mode=ro. Read a copy instead, so Codex's folder is
+    never touched (this is the normal state when Codex is not running)."""
+    return _is_wal(path) and not (os.path.exists(path + "-wal") and os.path.exists(path + "-shm"))
+
+
+_copies = {}  # original path -> temporary copy, one per run
+
+
 def _copy_to_temp(path: str) -> str:
+    if path in _copies and os.path.exists(_copies[path]):
+        return _copies[path]
     d = tempfile.mkdtemp(prefix="codex_goals_")
     _tmpdirs.append(d)
     dst = os.path.join(d, os.path.basename(path))
@@ -57,6 +79,7 @@ def _copy_to_temp(path: str) -> str:
     for suffix in ("-wal", "-shm"):
         if os.path.exists(path + suffix):
             shutil.copy2(path + suffix, dst + suffix)
+    _copies[path] = dst
     return dst
 
 
@@ -72,7 +95,7 @@ def open_ro(path: str) -> sqlite3.Connection:
     if not os.path.isfile(path):
         raise ReadError("database not found: %s" % path)
     last = None
-    if not _needs_copy(path):
+    if not _needs_copy(path) and not _would_create_files(path):
         for attempt in range(RETRIES):
             try:
                 conn = sqlite3.connect(_uri(path), uri=True, timeout=BUSY_TIMEOUT_MS / 1000.0)
@@ -86,6 +109,8 @@ def open_ro(path: str) -> sqlite3.Connection:
                 if "locked" not in str(exc) and "busy" not in str(exc):
                     break
                 time.sleep(0.2 * (attempt + 1))
+            except sqlite3.DatabaseError as exc:
+                raise ReadError("cannot read %s: %s" % (path, exc))
     try:
         copy = _copy_to_temp(path)
         conn = sqlite3.connect(_uri(copy), uri=True, timeout=BUSY_TIMEOUT_MS / 1000.0)
@@ -110,12 +135,18 @@ def _ident(name: str) -> str:
     return '"%s"' % name
 
 
-def select(conn, table: str, wanted, where: str = "", params=(), order: str = "") -> list:
-    """SELECT the wanted columns that exist; missing ones come back as None."""
+def select(conn, table: str, wanted, where: str = "", params=(), order: str = "", needs=()) -> list:
+    """SELECT the wanted columns that exist; missing ones come back as None.
+
+    ``needs`` lists the columns ``where`` refers to: if one is missing the
+    table is treated as empty. An ``order`` column that is missing is ignored.
+    """
     have = columns(conn, table)
     present = [c for c in wanted if c in have]
-    if not present:
+    if not present or any(c not in have for c in needs):
         return []
+    if order and order not in have:
+        order = ""
     sql = "SELECT %s FROM %s" % (", ".join(_ident(c) for c in present), _ident(table))
     if where:
         sql += " WHERE " + where
@@ -217,7 +248,7 @@ def read_threads(home, ids) -> dict:
         for chunk in range(0, len(ids), 500):
             part = ids[chunk:chunk + 500]
             marks = ",".join("?" * len(part))
-            for r in select(conn, "threads", THREAD_COLUMNS, "id IN (%s)" % marks, part):
+            for r in select(conn, "threads", THREAD_COLUMNS, "id IN (%s)" % marks, part, needs=("id",)):
                 out[r["id"]] = r
         return out
     finally:
@@ -237,7 +268,7 @@ def read_spawn_children(home, parent_id: str) -> list:
             pid = frontier.pop(0)
             for r in select(conn, "thread_spawn_edges",
                             ("parent_thread_id", "child_thread_id", "status"),
-                            "parent_thread_id = ?", (pid,)):
+                            "parent_thread_id = ?", (pid,), needs=("parent_thread_id",)):
                 cid = r["child_thread_id"]
                 if cid and cid not in seen:
                     seen.add(cid)
@@ -259,7 +290,7 @@ def read_thread_items(home, thread_id: str) -> list | None:
             return None
         rows = select(conn, "thread_items", ("item_json", "item_type", "rollout_ordinal",
                                              "created_at_ms", "turn_id"),
-                      "thread_id = ?", (thread_id,), order="rollout_ordinal")
+                      "thread_id = ?", (thread_id,), order="rollout_ordinal", needs=("thread_id",))
         return rows or None
     finally:
         conn.close()
@@ -276,6 +307,6 @@ def read_turn_errors(home, thread_id: str) -> list:
         return [r for r in select(conn, "thread_turns", ("turn_id", "status", "error_json",
                                                           "rollout_ordinal"),
                                   "thread_id = ? AND error_json IS NOT NULL", (thread_id,),
-                                  order="rollout_ordinal")]
+                                  order="rollout_ordinal", needs=("thread_id", "error_json"))]
     finally:
         conn.close()

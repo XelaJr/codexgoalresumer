@@ -93,9 +93,24 @@ def find_rollout(home, thread_id: str, recorded: str | None) -> str | None:
 
 # ---------------------------------------------------------------- helpers
 
+def _as_text(value) -> str:
+    """Text of a field that should be a string but may come in another shape."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return _text_of_content(value)
+    if isinstance(value, dict) and isinstance(value.get("text"), str):
+        return value["text"]
+    return json.dumps(value, ensure_ascii=False)
+
+
 def _text_of_content(content) -> str:
     if isinstance(content, str):
         return content
+    if not isinstance(content, list):
+        return _as_text(content) if content is not None else ""
     parts = []
     for c in content or []:
         if isinstance(c, dict):
@@ -169,18 +184,18 @@ def events_from_item(item: dict) -> list:
         text = item.get("text")
         if not isinstance(text, str):
             text = _text_of_content(item.get("content"))
-        return [{"kind": "agent", "text": text or ""}]
+        return [{"kind": "agent", "text": _as_text(text)}]
     if t == "commandExecution":
         return [{"kind": "command", "command": _cmd_str(item.get("command")),
                  "exit_code": _get(item, "exitCode", "exit_code"),
                  "status": str(item.get("status") or "").lower() or None,
-                 "output": _get(item, "aggregatedOutput", "aggregated_output") or ""}]
+                 "output": _as_text(_get(item, "aggregatedOutput", "aggregated_output"))}]
     if t == "fileChange":
         status = item.get("status")
         return [{"kind": "file_change", "changes": _changes(item.get("changes")),
                  "status": str(status).lower() if status else "completed"}]
     if t == "collabAgentToolCall":
-        return [{"kind": "subagent", "tool": item.get("tool"), "prompt": item.get("prompt") or "",
+        return [{"kind": "subagent", "tool": item.get("tool"), "prompt": _as_text(item.get("prompt")),
                  "receivers": _get(item, "receiverThreadIds", "receiver_thread_ids") or [],
                  "status": item.get("status")}]
     if t in ("mcpToolCall", "dynamicToolCall"):
@@ -196,7 +211,7 @@ def events_from_item(item: dict) -> list:
             ev.append({"kind": "tool_error", "name": name.strip("."), "text": str(msg)})
         return ev
     if t == "plan":
-        return [{"kind": "proposed_plan", "text": item.get("text") or ""}]
+        return [{"kind": "proposed_plan", "text": _as_text(item.get("text"))}]
     if t == "contextCompaction":
         return [{"kind": "compaction"}]
     return []
@@ -298,20 +313,20 @@ def parse_rollout(stream) -> tuple:
             add({"kind": "goal_tool", "name": "thread_goal_updated",
                  "arguments": json.dumps({"status": goal.get("status")}), "followup": ""}, "both")
         elif et == "user_message":
-            add({"kind": "user", "text": p.get("message") or ""}, "legacy")
+            add({"kind": "user", "text": _as_text(p.get("message"))}, "legacy")
         elif et == "agent_message":
-            add({"kind": "agent", "text": p.get("message") or ""}, "legacy")
+            add({"kind": "agent", "text": _as_text(p.get("message"))}, "legacy")
         elif et == "exec_command_end":
             add({"kind": "command", "command": _cmd_str(p.get("command")),
                  "exit_code": p.get("exit_code"), "status": p.get("status"),
-                 "output": p.get("aggregated_output")
-                 or (p.get("stdout") or "") + (p.get("stderr") or "")}, "legacy")
+                 "output": _as_text(p.get("aggregated_output"))
+                 or _as_text(p.get("stdout")) + _as_text(p.get("stderr"))}, "legacy")
         elif et == "patch_apply_end":
             ch = p.get("changes") or {}
             status = p.get("status") or ("completed" if p.get("success") else "failed")
             add({"kind": "file_change", "changes": _changes(ch), "status": status}, "legacy")
         elif et in ("error", "stream_error"):
-            add({"kind": "error", "text": p.get("message") or ""}, "both")
+            add({"kind": "error", "text": _as_text(p.get("message"))}, "both")
         elif et == "turn_aborted":
             add({"kind": "error", "text": "turn aborted: %s" % (p.get("reason") or "")}, "both")
         elif et == "context_compacted":

@@ -13,7 +13,7 @@ import subprocess
 import time
 
 from . import history, store
-from .paths import is_within, pretty, to_local
+from .paths import is_within, norm, pretty, to_local
 from .redact import redact, redact_obj
 
 STEP_MARK = {"completed": "[x]", "in_progress": "[~]", "pending": "[ ]"}
@@ -465,10 +465,19 @@ def select(data, lv) -> dict:
 # ---------------------------------------------------------------- render
 
 def _rel(path, cwd) -> str:
-    if cwd and is_within(path, cwd):
-        rest = path.replace("\\", "/")[len(cwd.replace("\\", "/").rstrip("/")) + 1:]
-        return rest or "."
-    return pretty(path)
+    """``path`` relative to ``cwd`` when inside it, keeping the original case.
+
+    The two may be written in different forms (``C:\\x`` vs ``/mnt/c/x``,
+    ``/private/var`` vs ``/var``), so the number of components below ``cwd`` is
+    taken from the normalised forms and the names from the original path.
+    """
+    if not cwd or not is_within(path, cwd):
+        return pretty(path)
+    depth = len([c for c in norm(path).split("/") if c]) - len([c for c in norm(cwd).split("/") if c])
+    if depth <= 0:
+        return "."
+    parts = [c for c in path.replace("\\", "/").split("/") if c]
+    return "/".join(parts[-depth:])
 
 
 def _quote(text) -> str:
