@@ -34,6 +34,7 @@ class ReadOnlyTest(helpers.FixtureCase):
             conn.execute("DELETE FROM thread_goals")
         conn.close()
 
+    @unittest.skipIf(os.name == "nt", "Windows locks the file bytes, so the copy fallback cannot read it either")
     def test_locked_database_falls_back_to_copy(self):
         path = os.path.join(self.home, "goals_1.sqlite")
         locker = sqlite3.connect(path, isolation_level=None)

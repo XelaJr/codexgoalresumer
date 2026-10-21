@@ -15,13 +15,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCHEMA = os.path.join(HERE, "schema")
+# CODEX_GOALS_SCHEMA_DIR points at schemas regenerated from another Codex
+# version (see tests/make_schema.py and tests/compat_check.py).
+SCHEMA = os.environ.get("CODEX_GOALS_SCHEMA_DIR") or os.path.join(HERE, "schema")
 ZST_FIXTURE = os.path.join(HERE, "rollouts", "legacy-zst.jsonl.zst")
 
 T0 = 1790000000000  # ms, 2026-09-21
@@ -154,9 +157,23 @@ def rollout_lines(story, thread_id, cwd, sha, branch, legacy=False):
 
 # ---------------------------------------------------------------- builders
 
-def _db(path, schema):
-    conn = sqlite3.connect(path)
-    with open(os.path.join(SCHEMA, schema), encoding="utf-8") as fh:
+def schema_name(kind, legacy=False):
+    """``goals_1`` etc.: the highest version present in the schema directory."""
+    best = None
+    for f in os.listdir(SCHEMA):
+        m = re.match(r"^%s_(\d+)%s\.sql$" % (kind, "_legacy_goals" if legacy else ""), f)
+        if m and (best is None or int(m.group(1)) > best):
+            best = int(m.group(1))
+    if best is None:
+        raise FileNotFoundError("no %s schema in %s" % (kind, SCHEMA))
+    return "%s_%d" % (kind, best)
+
+
+def _db(home, kind, legacy=False):
+    name = schema_name(kind)
+    conn = sqlite3.connect(os.path.join(home, name + ".sqlite"))
+    sql = (schema_name(kind, True) + "_legacy_goals" if legacy else name) + ".sql"
+    with open(os.path.join(SCHEMA, sql), encoding="utf-8") as fh:
         conn.executescript(fh.read())
     return conn
 
@@ -165,10 +182,9 @@ class HomeBuilder:
     def __init__(self, home, legacy_goals=False):
         self.home = home
         os.makedirs(home, exist_ok=True)
-        self.state = _db(os.path.join(home, "state_5.sqlite"),
-                         "state_5_legacy_goals.sql" if legacy_goals else "state_5.sql")
-        self.goals = self.state if legacy_goals else _db(os.path.join(home, "goals_1.sqlite"), "goals_1.sql")
-        self.hist = _db(os.path.join(home, "thread_history_1.sqlite"), "thread_history_1.sql")
+        self.state = _db(home, "state", legacy=legacy_goals)
+        self.goals = self.state if legacy_goals else _db(home, "goals")
+        self.hist = _db(home, "thread_history")
         self.n = 0
 
     def rollout_path(self, thread_id, day="21", zst=False):
