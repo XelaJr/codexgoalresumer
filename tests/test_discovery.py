@@ -28,18 +28,23 @@ class SqliteHomeTest(unittest.TestCase):
     def test_default_is_codex_home(self):
         self.assertEqual(discovery.resolve_sqlite_home(self.home, True, {}), (self.home, "CODEX_HOME"))
 
+    def p(self, name):
+        """An absolute path on every OS (on Windows "/x" is drive-relative)."""
+        return os.path.join(self.tmp, name)
+
     def test_env_var(self):
-        got = discovery.resolve_sqlite_home(self.home, True, {"CODEX_SQLITE_HOME": "/data/sq"})
-        self.assertEqual(got, (os.path.normpath("/data/sq"), "$CODEX_SQLITE_HOME"))
+        got = discovery.resolve_sqlite_home(self.home, True, {"CODEX_SQLITE_HOME": self.p("data")})
+        self.assertEqual(got, (self.p("data"), "$CODEX_SQLITE_HOME"))
 
     def test_env_var_ignored_for_foreign_homes(self):
-        got = discovery.resolve_sqlite_home(self.home, False, {"CODEX_SQLITE_HOME": "/data/sq"})
+        got = discovery.resolve_sqlite_home(self.home, False, {"CODEX_SQLITE_HOME": self.p("data")})
         self.assertEqual(got[1], "CODEX_HOME")
 
     def test_config_beats_env(self):
-        self.write(os.path.join(self.home, "config.toml"), 'model = "x"\nsqlite_home = "/cfg/sq"\n[tui]\nsqlite_home = "nope"\n')
-        got = discovery.resolve_sqlite_home(self.home, True, {"CODEX_SQLITE_HOME": "/data/sq"})
-        self.assertEqual(got, (os.path.normpath("/cfg/sq"), "config.toml"))
+        self.write(os.path.join(self.home, "config.toml"),
+                   "model = 'x'\nsqlite_home = '%s'\n[tui]\nsqlite_home = 'nope'\n" % self.p("cfg"))
+        got = discovery.resolve_sqlite_home(self.home, True, {"CODEX_SQLITE_HOME": self.p("data")})
+        self.assertEqual(got, (self.p("cfg"), "config.toml"))
 
     def test_config_relative_path(self):
         self.write(os.path.join(self.home, "config.toml"), "sqlite_home = 'db'\n")
@@ -51,14 +56,14 @@ class SqliteHomeTest(unittest.TestCase):
         self.assertEqual(discovery.resolve_sqlite_home(self.home, True, {})[1], "CODEX_HOME")
 
     def test_requirements_beat_everything(self):
-        self.write(os.path.join(self.home, "config.toml"), 'sqlite_home = "/cfg/sq"\n')
-        self.write(self.req, 'sqlite_home = "/policy/sq"\n')
-        got = discovery.resolve_sqlite_home(self.home, True, {"CODEX_SQLITE_HOME": "/data/sq"})
-        self.assertEqual(got[0], os.path.normpath("/policy/sq"))
+        self.write(os.path.join(self.home, "config.toml"), "sqlite_home = '%s'\n" % self.p("cfg"))
+        self.write(self.req, "sqlite_home = '%s'\n" % self.p("policy"))
+        got = discovery.resolve_sqlite_home(self.home, True, {"CODEX_SQLITE_HOME": self.p("data")})
+        self.assertEqual(got[0], self.p("policy"))
         self.assertTrue(got[1].startswith("requirements.toml"))
 
     def test_fallback_parser_without_tomllib(self):
-        self.write(os.path.join(self.home, "config.toml"), 'sqlite_home = "/cfg/sq" # comment\n')
+        self.write(os.path.join(self.home, "config.toml"), "sqlite_home = '%s' # comment\n" % self.p("cfg"))
         real_import = __import__
 
         def fake_import(name, *a, **k):
@@ -68,7 +73,7 @@ class SqliteHomeTest(unittest.TestCase):
 
         with mock.patch("builtins.__import__", side_effect=fake_import):
             got = discovery.resolve_sqlite_home(self.home, True, {})
-        self.assertEqual(got[0], os.path.normpath("/cfg/sq"))
+        self.assertEqual(got[0], self.p("cfg"))
 
 
 class FindDbsTest(unittest.TestCase):
