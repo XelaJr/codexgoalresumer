@@ -198,8 +198,10 @@ python3 -m unittest discover -s tests -t tests
 
 Fixtures are generated at test time from schemas produced by the
 [openai/codex](https://github.com/openai/codex) migrations (`tests/fixtures/schema/`,
-Apache-2.0). CI runs the suite on Ubuntu, macOS and Windows with Python 3.9 and 3.14,
-and a weekly job checks compatibility against the latest Codex release.
+Apache-2.0). CI runs the suite on Ubuntu, macOS and Windows with Python 3.9 and 3.14.
+A weekly job installs the latest Codex release on all three systems, lets Codex itself
+create a goal through its app-server (no API key needed, `tests/real_codex_goal.py`) and
+checks that `where`, `list` and `brief` find it in the default `CODEX_HOME`.
 
 ## Resumen en español
 

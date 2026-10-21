@@ -10,7 +10,7 @@
     {
       "name": "codexgoalresumer",
       "description": "Resume unfinished OpenAI Codex /goal goals in Claude Code: list them, read a handoff brief and let Claude finish the work. Read-only on Codex's data.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "XelaJr",
         "url": "https://github.com/XelaJr"
