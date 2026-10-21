@@ -336,6 +336,28 @@ def parse_rollout(stream) -> tuple:
 
 # ---------------------------------------------------------------- public
 
+def session_meta(home, thread_id: str) -> dict | None:
+    """``session_meta`` of a thread's rollout (fallback when ``threads`` is missing)."""
+    path = find_rollout(home, thread_id, None)
+    if not path:
+        return None
+    try:
+        with open_rollout(path) as fh:
+            for i, line in enumerate(fh):
+                if i > 20:
+                    break
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(rec, dict) and rec.get("type") == "session_meta":
+                    p = rec.get("payload") or {}
+                    return {"cwd": p.get("cwd"), "git": p.get("git") or {}, "path": path}
+    except (OSError, RuntimeError):
+        return None
+    return None
+
+
 def load_history(home, thread_id: str, thread_row: dict | None) -> HistoryResult:
     from . import store
 

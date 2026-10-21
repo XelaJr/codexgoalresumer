@@ -37,7 +37,7 @@ _PATTERNS = [
     (re.compile(r'(?i)"(?:access_token|refresh_token|id_token|api_key|apikey|client_secret|password|'
                 r'secret|%s)"\s*:\s*"([^"]{4,})"' % _SECRET_NAME), 1),
     # NAME_KEY=value / NAME_TOKEN: value / export NAME_SECRET="value"
-    (re.compile(r"(?i)\b%s\s*[=:]\s*[\"']?([^\s\"'`,;]{4,})" % _SECRET_NAME), 1),
+    (re.compile(r"(?i)\b%s\s*[=:]\s*[\"']?([^\s\"'`,;)\]}>]{4,})" % _SECRET_NAME), 1),
     # password=..., password: ..., --password ...
     (re.compile(r"(?i)(?:\bpassword|\bpasswd|\bpwd|--password)(?:\s*[=:]\s*|(?<=--password)\s+)[\"']?([^\s\"']{4,})"), 1),
 ]
@@ -64,7 +64,7 @@ def find_secrets(text) -> set:
     for m in _NATURAL.finditer(text):
         if _natural_ok(m.group(1)):
             out.add(m.group(1))
-    return {s for s in out if s and s != MASK}
+    return {s for s in out if s and MASK[:-1] not in s}
 
 
 def _secret_like(s: str) -> bool:
@@ -95,10 +95,10 @@ def redact(text, known=None):
     # Values that are not secret-like enough to mask globally are masked in place.
     for rx, grp in _PATTERNS:
         text = rx.sub(lambda m: m.group(0).replace(m.group(grp), MASK)
-                      if m.group(grp) != MASK else m.group(0), text)
+                      if MASK[:-1] not in m.group(grp) else m.group(0), text)
     def natural(m):
         v = m.group(1)
-        return m.group(0).replace(v, MASK) if v != MASK and _natural_ok(v) else m.group(0)
+        return m.group(0).replace(v, MASK) if MASK[:-1] not in v and _natural_ok(v) else m.group(0)
     return _NATURAL.sub(natural, text)
 
 

@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from . import __version__, brief as brief_mod, discovery, store
+from . import __version__, brief as brief_mod, discovery, history, store
 from .paths import is_within, pretty
 
 EXIT_OK, EXIT_NOT_FOUND, EXIT_READ, EXIT_SCHEMA = 0, 1, 2, 3
@@ -58,6 +58,13 @@ def thread_rows(goals):
             rows.update(store.read_threads(home, ids))
         except store.ReadError:
             pass
+        for tid in ids:
+            if tid not in rows:
+                meta = history.session_meta(home, tid)
+                if meta:
+                    git = meta.get("git") or {}
+                    rows[tid] = {"id": tid, "cwd": meta.get("cwd"), "git_sha": git.get("commit_hash"),
+                                 "git_branch": git.get("branch"), "rollout_path": meta.get("path")}
     return rows
 
 

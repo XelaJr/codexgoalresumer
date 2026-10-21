@@ -212,7 +212,7 @@ def _thread_summary(events) -> dict:
             "last_agent": agents[-1] if agents else ""}
 
 
-_WRAPPER = re.compile(r"""^\S*(?:bash|sh|zsh|pwsh|powershell)(?:\.exe)?\s+(?:-\w+\s+)*-l?c(?:ommand)?\s+(['"])(.*)\1\s*$""", re.S)
+_WRAPPER = re.compile(r"""^\S*(?:bash|sh|zsh|pwsh|powershell)(?:\.exe)?\s+(?:-\w+\s+)*-l?c(?:ommand)?\s+(['"])(.*)\1\s*$""", re.S | re.I)
 # Exit code 1 from these only means "nothing found / condition false".
 _PROBES = {"rg", "grep", "egrep", "fgrep", "test", "[", "[[", "command", "which", "type", "diff",
            "cmp", "find", "ls", "cat", "sed", "head", "tail", "wc", "stat", "file", "pgrep", "git"}
@@ -575,10 +575,12 @@ def render_markdown(sel, now=None) -> str:
         L.append("")
         L.append("Last user message:")
         L.append(_quote(sel["last_user_message"]))
-    if sel["last_agent_messages"]:
+    shown_agents = [m for m in sel["last_agent_messages"] if m != sel["block_reason"]]
+    if shown_agents:
         L.append("")
-        L.append("Last agent message%s (oldest first):" % ("s" if len(sel["last_agent_messages"]) > 1 else ""))
-        for m in sel["last_agent_messages"]:
+        L.append("%s agent message%s (oldest first):" % ("Earlier" if sel["block_reason"] else "Last",
+                                                        "s" if len(shown_agents) > 1 else ""))
+        for m in shown_agents:
             L.append(_quote(m))
             L.append("")
         L.pop()
