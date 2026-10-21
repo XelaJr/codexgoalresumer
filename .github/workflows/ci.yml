@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.9", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Show environment
+        run: |
+          python --version
+          git --version
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t tests -v
+      - name: CLI smoke test
+        shell: bash
+        run: |
+          python scripts/codex_goals.py --help
+          python scripts/codex_goals.py where
+          python scripts/codex_goals.py list --all
+      - name: Session notice hook
+        shell: bash
+        run: |
+          out=$(echo '{"cwd":"."}' | sh hooks/session_notice.sh)
+          test -z "$out"
+          CODEX_GOALS_NOTICE=1 sh hooks/session_notice.sh </dev/null
+
+  manifest:
+    name: Plugin manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: JSON files parse and versions agree
+        run: |
+          python3 - <<'PY'
+          import json
+          plugin = json.load(open(".claude-plugin/plugin.json"))
+          market = json.load(open(".claude-plugin/marketplace.json"))
+          hooks = json.load(open("hooks/hooks.json"))
+          entry = next(p for p in market["plugins"] if p["name"] == plugin["name"])
+          assert entry["version"] == plugin["version"], (entry["version"], plugin["version"])
+          import re
+          init = open("scripts/codex_goals/__init__.py").read()
+          assert '__version__ = "%s"' % plugin["version"] in init, "scripts version differs"
+          assert "SessionStart" in hooks["hooks"]
+          print("ok", plugin["name"], plugin["version"])
+          PY

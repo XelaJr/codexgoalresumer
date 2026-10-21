@@ -1,0 +1,64 @@
+name: Codex compatibility
+
+# Weekly: install the latest Codex release, regenerate the database schemas
+# from that release's source, create a minimal goal on them and check that
+# `list` and `brief` still work. Opens (or updates) an issue on failure.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the latest Codex CLI
+        id: codex
+        run: |
+          npm install -g @openai/codex
+          version=$(codex --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Codex $version"
+      - name: Fetch the matching Codex source
+        id: src
+        run: |
+          tag="rust-v${{ steps.codex.outputs.version }}"
+          if git clone --depth 1 --branch "$tag" --filter=blob:none --sparse https://github.com/openai/codex.git codex-src; then
+            echo "rev=$tag" >> "$GITHUB_OUTPUT"
+          else
+            git clone --depth 1 --filter=blob:none --sparse https://github.com/openai/codex.git codex-src
+            echo "rev=main@$(git -C codex-src rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+          git -C codex-src sparse-checkout set codex-rs/state
+      - name: Check compatibility
+        id: check
+        run: |
+          set -o pipefail
+          python tests/compat_check.py codex-src --rev "${{ steps.src.outputs.rev }}" | tee compat.txt
+      - name: Open or update an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Codex ${{ steps.codex.outputs.version }} compatibility check failed"
+          body=$(printf 'The weekly check against Codex %s (%s) failed.\n\nRun: %s/%s/actions/runs/%s\n\n```\n%s\n```\n' \
+            "${{ steps.codex.outputs.version }}" "${{ steps.src.outputs.rev }}" \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$(tail -c 6000 compat.txt 2>/dev/null)")
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
