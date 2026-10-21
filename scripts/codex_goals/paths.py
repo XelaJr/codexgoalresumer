@@ -106,7 +106,7 @@ def to_local(path: str | None) -> str | None:
     p = str(path)
     if os.path.exists(p):
         return p
-    n = p.replace("\\", "/")
+    n = _strip_extended(p).replace("\\", "/")
     if os.name == "nt":
         m = _MNT_RE.match(n)
         if m:

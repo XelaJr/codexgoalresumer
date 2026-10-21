@@ -144,12 +144,31 @@ class DiscoverTest(unittest.TestCase):
     def test_windows_candidates(self):
         env = {"USERPROFILE": r"C:\Users\ana", "LOCALAPPDATA": r"C:\Users\ana\AppData\Local"}
         with mock.patch.object(discovery.os, "name", "nt"), \
-                mock.patch.object(discovery.glob, "glob", return_value=[r"\\wsl.localhost\Ubuntu\home\ana\.codex"]):
+                mock.patch.object(discovery, "wsl_homes_from_windows",
+                                  return_value=[r"\\wsl.localhost\Ubuntu\home\ana\.codex"]):
             cands = discovery.candidate_homes(env)
         origins = [c[1] for c in cands]
         self.assertIn("%USERPROFILE%", origins)
         self.assertIn("Codex app (%LOCALAPPDATA%)", origins)
         self.assertIn("WSL distribution", origins)
+
+
+    def test_wsl_distros_from_wsl_exe(self):
+        out = "Ubuntu-24.04\r\nDebian\r\n".encode("utf-16-le")
+        with mock.patch("subprocess.run", return_value=mock.Mock(stdout=out)):
+            self.assertEqual(discovery.wsl_distros(), ["Ubuntu-24.04", "Debian"])
+
+    def test_wsl_homes_include_root_user(self):
+        def fake_glob(pattern, **k):
+            norm = pattern.replace("\\", "/")
+            if norm.endswith("Ubuntu/root/.codex"):
+                return [pattern]
+            return []
+        with mock.patch.object(discovery, "wsl_distros", return_value=["Ubuntu"]), \
+                mock.patch.object(discovery.glob, "glob", side_effect=fake_glob):
+            homes = discovery.wsl_homes_from_windows()
+        self.assertEqual(len(homes), 1)
+        self.assertTrue(homes[0].replace("\\", "/").endswith("Ubuntu/root/.codex"))
 
 
 if __name__ == "__main__":

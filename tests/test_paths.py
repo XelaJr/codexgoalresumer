@@ -4,7 +4,7 @@ import helpers  # noqa: F401
 import os
 from unittest import mock
 
-from codex_goals.paths import is_within, norm, pretty
+from codex_goals.paths import is_within, norm, pretty, to_local
 
 
 class NormTest(unittest.TestCase):
@@ -74,6 +74,14 @@ class PrettyTest(unittest.TestCase):
     def test_extended_prefix_removed(self):
         with mock.patch.object(os.path, "expanduser", return_value="/home/ana"):
             self.assertEqual(pretty("\\\\?\\D:\\a\\_temp\\proj"), "D:\\a\\_temp\\proj")
+
+
+class ToLocalTest(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX side of the translation")
+    def test_windows_path_seen_from_wsl(self):
+        with mock.patch.object(os.path, "exists", side_effect=lambda p: p.startswith("/mnt/d")):
+            self.assertEqual(to_local("\\\\?\\D:\\a\\proj"), "/mnt/d/a/proj")
+            self.assertEqual(to_local("D:\\a\\proj"), "/mnt/d/a/proj")
 
 
 if __name__ == "__main__":

@@ -112,8 +112,79 @@ jobs:
           name: real-codex-${{ matrix.os }}
           path: out/
 
+  wsl:
+    name: real Codex · Windows + WSL
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: Vampire/setup-wsl@v5
+        with:
+          distribution: Ubuntu-24.04
+          additional-packages: python3 git nodejs npm
+      - name: Install Codex on Windows and in WSL
+        shell: bash
+        run: |
+          npm install -g @openai/codex
+          codex --version
+      - name: Install Codex in WSL
+        shell: wsl-bash {0}
+        run: |
+          npm install -g @openai/codex >/dev/null 2>&1 || sudo npm install -g @openai/codex
+          codex --version
+      - name: Codex on Windows creates a goal
+        shell: bash
+        run: |
+          mkdir -p out "$RUNNER_TEMP/winproj"
+          git -C "$RUNNER_TEMP/winproj" init -q
+          python tests/real_codex_goal.py "$USERPROFILE/.codex" "$RUNNER_TEMP/winproj" --status blocked \
+            --objective "Goal recorded on Windows" | tail -1 | tr -d '\r' > out/win-thread.txt
+          cat out/win-thread.txt
+      - name: Codex in WSL creates a goal
+        shell: wsl-bash {0}
+        run: |
+          mkdir -p /tmp/wslproj && git -C /tmp/wslproj init -q
+          python3 tests/real_codex_goal.py "$HOME/.codex" /tmp/wslproj --status paused \
+            --objective "Goal recorded in WSL" | tail -1 > out/wsl-thread.txt
+          cat out/wsl-thread.txt
+      - name: "Claude Code in WSL, Codex on Windows"
+        shell: wsl-bash {0}
+        run: |
+          set -eo pipefail
+          tid=$(cat out/win-thread.txt | tr -d '\r')
+          python3 scripts/codex_goals.py where | tee out/wsl-where.txt
+          grep -q "/mnt/c/Users/" out/wsl-where.txt
+          python3 scripts/codex_goals.py list --all | tee out/wsl-list.txt
+          grep -q "${tid:0:8}" out/wsl-list.txt
+          winproj=$(wslpath -u "$(cmd.exe /c echo %RUNNER_TEMP% 2>/dev/null | tr -d '\r')")/winproj
+          (cd "$winproj" && python3 "$OLDPWD/scripts/codex_goals.py" list) | tee out/wsl-list-cwd.txt
+          grep -q "${tid:0:8}" out/wsl-list-cwd.txt
+          python3 scripts/codex_goals.py brief "$tid" | tee out/wsl-brief.txt
+          grep -q "Goal recorded on Windows" out/wsl-brief.txt
+      - name: "Claude Code on Windows, Codex in WSL"
+        shell: bash
+        run: |
+          set -eo pipefail
+          tid=$(cat out/wsl-thread.txt | tr -d '\r')
+          python scripts/codex_goals.py where | tee out/win-where.txt
+          grep -qi "wsl" out/win-where.txt
+          python scripts/codex_goals.py list --all | tee out/win-list.txt
+          grep -q "${tid:0:8}" out/win-list.txt
+          python scripts/codex_goals.py brief "$tid" | tee out/win-brief.txt
+          grep -q "Goal recorded in WSL" out/win-brief.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-codex-windows-wsl
+          path: out/
+
   report:
-    needs: [schema, real-codex]
+    needs: [schema, real-codex, wsl]
     if: failure()
     runs-on: ubuntu-latest
     steps:

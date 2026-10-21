@@ -170,6 +170,38 @@ def is_wsl() -> bool:
         return False
 
 
+def wsl_distros() -> list:
+    """Installed WSL distributions, from ``wsl.exe -l -q`` (UTF-16 output)."""
+    import subprocess
+
+    try:
+        r = subprocess.run(["wsl.exe", "-l", "-q"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                           timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    raw = r.stdout
+    text = raw.decode("utf-16-le", "ignore") if b"\x00" in raw else raw.decode("utf-8", "ignore")
+    return [line.strip().strip("\x00") for line in text.splitlines() if line.strip().strip("\x00")]
+
+
+def wsl_homes_from_windows() -> list:
+    """``.codex`` folders inside WSL distributions, seen from Windows."""
+    found = []
+    roots = [r"\\wsl.localhost", r"\\wsl$"]
+    distros = wsl_distros()
+    for root in roots:
+        bases = [os.path.join(root, d) for d in distros]
+        bases += glob.glob(os.path.join(root, "*"))  # works on some Windows builds
+        for base in bases:
+            for pattern in (os.path.join(base, "home", "*", ".codex"), os.path.join(base, "root", ".codex")):
+                for p in sorted(glob.glob(pattern)):
+                    if p not in found:
+                        found.append(p)
+        if found:
+            break  # \\wsl$ is an alias of \\wsl.localhost
+    return found
+
+
 def candidate_homes(env=None) -> list:
     """List of ``(path, origin, from_current_env)`` in priority order."""
     env = os.environ if env is None else env
@@ -183,9 +215,8 @@ def candidate_homes(env=None) -> list:
         if env.get("LOCALAPPDATA"):
             out.append((os.path.join(env["LOCALAPPDATA"], "OpenAI", "CodexAppHome"),
                         "Codex app (%LOCALAPPDATA%)", True))
-        for root in (r"\\wsl.localhost", r"\\wsl$"):
-            for p in sorted(glob.glob(os.path.join(root, "*", "home", "*", ".codex"))):
-                out.append((p, "WSL distribution", False))
+        for p in wsl_homes_from_windows():
+            out.append((p, "WSL distribution", False))
     elif sys.platform.startswith("linux") and not is_wsl():
         out.append(("/mnt/c/Users/*/.codex", "Windows user (not WSL, skipped)", False))
     elif is_wsl():
