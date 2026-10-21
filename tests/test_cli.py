@@ -198,6 +198,13 @@ class ExportTest(helpers.FixtureCase):
         self.assertEqual(code, 2)
         self.assertIn("--anonymize", err)
 
+    def test_never_writes_inside_codex_home(self):
+        code, _, err = self.run_cli("export", "01a0b10c", "--anonymize", "--out",
+                                    os.path.join(self.home, "x"), "--home", self.home)
+        self.assertEqual(code, 2)
+        self.assertIn("refusing", err)
+        self.assertFalse(os.path.exists(os.path.join(self.home, "x")))
+
     def test_anonymized_copy_is_usable_and_clean(self):
         out_dir = os.path.join(self.tmp, "export")
         code, out, err = self.run_cli("export", "01a0b10c", "--anonymize", "--out", out_dir, "--home", self.home)

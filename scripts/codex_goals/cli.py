@@ -270,6 +270,10 @@ def cmd_export(args):
     if not goal:
         return code
     out_dir = args.out or os.path.join(os.getcwd(), "codex-goal-%s-anonymized" % goal.thread_id[:8])
+    for h in disc.homes:
+        if is_within(os.path.abspath(out_dir), h.path) or is_within(os.path.abspath(out_dir), h.sqlite_home):
+            _err("refusing to write inside a Codex folder (%s); choose another --out" % h.path)
+            return EXIT_READ
     try:
         report = anonymize.export(goal, out_dir)
     except (store.ReadError, OSError) as exc:
