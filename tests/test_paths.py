@@ -1,7 +1,10 @@
 import unittest
 
 import helpers  # noqa: F401
-from codex_goals.paths import is_within, norm
+import os
+from unittest import mock
+
+from codex_goals.paths import is_within, norm, pretty
 
 
 class NormTest(unittest.TestCase):
@@ -59,6 +62,18 @@ class WithinTest(unittest.TestCase):
     def test_empty(self):
         self.assertFalse(is_within("", "/a"))
         self.assertFalse(is_within("/a", None))
+
+
+class PrettyTest(unittest.TestCase):
+    def test_home_shortened_case_kept(self):
+        with mock.patch.object(os.path, "expanduser", return_value="/home/Ana"):
+            self.assertEqual(pretty("/home/Ana/Proj/X"), "~/Proj/X")
+            self.assertEqual(pretty("/home/Ana"), "~")
+            self.assertEqual(pretty("/srv/Other"), "/srv/Other")
+
+    def test_extended_prefix_removed(self):
+        with mock.patch.object(os.path, "expanduser", return_value="/home/ana"):
+            self.assertEqual(pretty("\\\\?\\D:\\a\\_temp\\proj"), "D:\\a\\_temp\\proj")
 
 
 if __name__ == "__main__":

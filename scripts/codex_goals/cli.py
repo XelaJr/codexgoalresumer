@@ -374,7 +374,20 @@ def build_parser():
     return p
 
 
+def _utf8_stdio():
+    """Claude Code reads tool output as UTF-8; Windows defaults pipes to the ANSI code page."""
+    if os.environ.get("PYTHONIOENCODING"):
+        return
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if (stream.encoding or "").lower().replace("-", "") != "utf8":
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv=None):
+    _utf8_stdio()
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)

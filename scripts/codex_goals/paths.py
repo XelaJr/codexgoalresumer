@@ -74,15 +74,25 @@ def is_within(child: str | None, parent: str | None, platform: str | None = None
     return c.startswith(prefix)
 
 
+def _strip_extended(path: str) -> str:
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    if path.startswith("\\\\?\\") or path.startswith("//?/"):
+        return path[4:]
+    return path
+
+
 def pretty(path: str | None) -> str:
-    """Shorten the user's home directory to ``~`` for display."""
+    """Shorten the user's home directory to ``~`` for display, keeping the case."""
     if not path:
         return ""
+    p = _strip_extended(str(path))
     home = os.path.expanduser("~")
-    if home and home not in ("~", "/") and is_within(path, home):
-        rest = norm(path)[len(norm(home)):]
-        return "~" + (rest if rest.startswith("/") else "/" + rest if rest else "")
-    return str(path)
+    if home and home not in ("~", "/") and is_within(p, home):
+        rest = p[len(home.rstrip("/\\")):].replace("\\", "/")
+        if norm(p[:len(home.rstrip("/\\"))]) == norm(home):
+            return "~" + (rest if rest.startswith("/") or not rest else "/" + rest)
+    return p
 
 
 def to_local(path: str | None) -> str | None:
