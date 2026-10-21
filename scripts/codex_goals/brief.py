@@ -570,7 +570,9 @@ def render_markdown(sel, now=None) -> str:
         L.append("Agent message right after it marked the goal blocked:")
         L.append(_quote(sel["block_reason"]))
     elif g["status"] == "blocked":
-        L.append("Block reason: not recorded explicitly; read the last agent message below.")
+        L.append("Block reason: not recorded explicitly; %s." % (
+            "read the last agent message below" if sel["last_agent_messages"]
+            else "Codex left no agent message, ask the user"))
     if sel["last_user_message"]:
         L.append("")
         L.append("Last user message:")
@@ -596,8 +598,11 @@ def render_markdown(sel, now=None) -> str:
     if not gi.get("available"):
         L.append("Not available: %s." % gi.get("reason", "unknown"))
     else:
-        L.append("Current branch: %s @ %s · uncommitted changes: %d"
-                 % (gi.get("branch"), gi.get("head"), gi.get("uncommitted", 0)))
+        if gi.get("head"):
+            L.append("Current branch: %s @ %s · uncommitted changes: %d"
+                     % (gi.get("branch"), gi.get("head"), gi.get("uncommitted", 0)))
+        else:
+            L.append("The repository has no commits yet · uncommitted changes: %d" % gi.get("uncommitted", 0))
         if gi.get("branch_changed"):
             L.append("Warning: Codex worked on branch %s, the repo is now on %s."
                      % (gi.get("recorded_branch"), gi.get("branch")))

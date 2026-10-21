@@ -1,8 +1,13 @@
 name: Codex compatibility
 
-# Weekly: install the latest Codex release, regenerate the database schemas
-# from that release's source, create a minimal goal on them and check that
-# `list` and `brief` still work. Opens (or updates) an issue on failure.
+# Weekly, against the latest Codex release:
+# - schema: regenerate the database schemas from that release's source, build
+#   a goal on them and run the suite (tests/compat_check.py);
+# - real-codex: on Linux, macOS and Windows, let Codex itself create a goal in
+#   its default CODEX_HOME (no API key needed, tests/real_codex_goal.py) and
+#   check that where/list/brief find it without --home. `codex doctor` output
+#   and the results are kept as artifacts.
+# Opens (or updates) an issue when anything fails.
 
 on:
   schedule:
@@ -14,8 +19,10 @@ permissions:
   issues: write
 
 jobs:
-  compat:
+  schema:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.codex.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,19 +50,81 @@ jobs:
           fi
           git -C codex-src sparse-checkout set codex-rs/state
       - name: Check compatibility
-        id: check
         run: |
           set -o pipefail
           python tests/compat_check.py codex-src --rev "${{ steps.src.outputs.rev }}" | tee compat.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compat-schema
+          path: compat.txt
+          if-no-files-found: ignore
+
+  real-codex:
+    name: real Codex · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the latest Codex CLI
+        shell: bash
+        run: |
+          npm install -g @openai/codex
+          codex --version
+      - name: codex doctor
+        shell: bash
+        run: |
+          mkdir -p out
+          codex doctor > out/codex-doctor.txt 2>&1 || true
+          cat out/codex-doctor.txt
+      - name: Create a real goal in the default CODEX_HOME
+        shell: bash
+        run: |
+          unset CODEX_HOME
+          mkdir -p "$RUNNER_TEMP/proj"
+          git -C "$RUNNER_TEMP/proj" init -q
+          python tests/real_codex_goal.py "$(python -c 'import os; print(os.path.join(os.path.expanduser("~"), ".codex"))')" \
+            "$RUNNER_TEMP/proj" --status blocked | tee out/thread-id.txt
+          ls -la ~/.codex > out/codex-home-listing.txt 2>&1 || true
+          cat out/codex-home-listing.txt
+      - name: where / list / brief without --home
+        shell: bash
+        run: |
+          set -o pipefail
+          tid=$(tail -1 out/thread-id.txt | tr -d '\r')
+          python scripts/codex_goals.py where | tee out/where.txt
+          (cd "$RUNNER_TEMP/proj" && python "$GITHUB_WORKSPACE/scripts/codex_goals.py" list) | tee out/list.txt
+          grep -q "${tid:0:8}" out/list.txt
+          python scripts/codex_goals.py brief "$tid" | tee out/brief.txt
+          grep -q "· blocked" out/brief.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-codex-${{ matrix.os }}
+          path: out/
+
+  report:
+    needs: [schema, real-codex]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
       - name: Open or update an issue
-        if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          title="Codex ${{ steps.codex.outputs.version }} compatibility check failed"
-          body=$(printf 'The weekly check against Codex %s (%s) failed.\n\nRun: %s/%s/actions/runs/%s\n\n```\n%s\n```\n' \
-            "${{ steps.codex.outputs.version }}" "${{ steps.src.outputs.rev }}" \
-            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$(tail -c 6000 compat.txt 2>/dev/null)")
+          title="Codex ${{ needs.schema.outputs.version }} compatibility check failed"
+          body=$(printf 'The weekly check against the latest Codex (%s) failed.\n\nRun and artifacts: %s/%s/actions/runs/%s\n' \
+            "${{ needs.schema.outputs.version }}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
           existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
