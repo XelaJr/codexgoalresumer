@@ -1,0 +1,17 @@
+{
+  "description": "Optional one-line notice at session start when the project has unfinished Codex goals. Disabled unless the plugin's 'notice' option is on.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/session_notice.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

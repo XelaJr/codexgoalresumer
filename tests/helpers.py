@@ -40,7 +40,7 @@ class FixtureCase(unittest.TestCase):
         self.home, self.project = make_fixtures.build(self.tmp, self.scenario, legacy_goals=self.legacy_goals)
         # Never let the developer's real Codex leak into a test.
         self._env = dict(os.environ)
-        for k in ("CODEX_HOME", "CODEX_SQLITE_HOME", "CLAUDE_PLUGIN_OPTION_SESSION_NOTICE", "CODEX_GOALS_NOTICE"):
+        for k in ("CODEX_HOME", "CODEX_SQLITE_HOME", "CLAUDE_PLUGIN_OPTION_NOTICE", "CODEX_GOALS_NOTICE"):
             os.environ.pop(k, None)
 
     def tearDown(self):

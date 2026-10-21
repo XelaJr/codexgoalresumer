@@ -225,7 +225,7 @@ class NotifyTest(helpers.FixtureCase):
         self.assertEqual((code, out), (0, ""))
 
     def test_enabled_by_plugin_option(self):
-        os.environ["CLAUDE_PLUGIN_OPTION_SESSION_NOTICE"] = "true"
+        os.environ["CLAUDE_PLUGIN_OPTION_NOTICE"] = "true"
         code, out, _ = self.run_cli("notify", "--home", self.home, stdin=json.dumps({"cwd": self.project}))
         self.assertEqual(code, 0)
         msg = json.loads(out)

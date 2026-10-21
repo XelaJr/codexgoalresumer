@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#1d2230"/>
+  <!-- goal target -->
+  <circle cx="256" cy="256" r="58" fill="none" stroke="#f2efe6" stroke-width="22"/>
+  <circle cx="256" cy="256" r="18" fill="#f2efe6"/>
+  <!-- resume arrow around it -->
+  <path d="M 256 104 A 152 152 0 1 1 116 196" fill="none" stroke="#e07a52" stroke-width="34" stroke-linecap="round"/>
+  <path d="M 72 172 L 128 230 L 158 152 Z" fill="#e07a52" stroke="#e07a52" stroke-width="14" stroke-linejoin="round"/>
+</svg>

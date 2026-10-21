@@ -290,8 +290,7 @@ def _truthy(value):
 
 def cmd_notify(args):
     """One-line notice for the SessionStart hook. Never fails, silent when disabled."""
-    enabled = args.force or _truthy(os.environ.get("CLAUDE_PLUGIN_OPTION_SESSION_NOTICE")) \
-        or _truthy(os.environ.get("CLAUDE_PLUGIN_OPTION_SESSIONNOTICE")) \
+    enabled = args.force or _truthy(os.environ.get("CLAUDE_PLUGIN_OPTION_NOTICE")) \
         or _truthy(os.environ.get("CODEX_GOALS_NOTICE"))
     if not enabled:
         return EXIT_OK

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "codexgoalresumer",
+  "description": "Resume unfinished OpenAI Codex /goal goals in Claude Code.",
+  "owner": {
+    "name": "XelaJr",
+    "url": "https://github.com/XelaJr"
+  },
+  "plugins": [
+    {
+      "name": "codexgoalresumer",
+      "description": "Resume unfinished OpenAI Codex /goal goals in Claude Code: list them, read a handoff brief and let Claude finish the work. Read-only on Codex's data.",
+      "version": "0.1.0",
+      "author": {
+        "name": "XelaJr",
+        "url": "https://github.com/XelaJr"
+      },
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/XelaJr/codexgoalresumer",
+      "license": "MIT",
+      "keywords": ["codex", "openai", "goal", "handoff", "resume"]
+    }
+  ]
+}
