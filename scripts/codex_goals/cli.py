@@ -166,7 +166,7 @@ def filter_goals(goals, rows, cwd, show_all, include_complete, statuses):
 
 def _abs_cwd(path):
     """Make ``--cwd .`` absolute, but keep paths of another OS (``C:\\x`` on Linux) as given."""
-    if os.path.isabs(path) or re.match(r"^[A-Za-z]:[\\/]", path) or path.startswith(("\\\\", "//")):
+    if os.path.isabs(path) or re.match(r"^[A-Za-z]:[\\/]", path) or path.startswith(("/", "\\")):
         return path
     return os.path.abspath(path)
 
